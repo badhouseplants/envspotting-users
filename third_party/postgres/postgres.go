@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/allanger/gitlab-environment-aggregator/tools/logger"
+	"github.com/badhouseplants/envspotting-users/tools/logger"
 
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/spf13/viper"
@@ -39,7 +39,7 @@ var (
 
 // Pool return db coonection pool
 func Pool() *pgxpool.Pool {
-	var log = logger.GetSimpleLogger()
+	var log = logger.GetServerLogger()
 	if pool == nil {
 		err := OpenConnectionPool()
 		if err != nil {

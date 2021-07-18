@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/allanger/gitlab-environment-aggregator/third_party/redis"
+	"github.com/badhouseplants/envspotting-users/third_party/redis"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/google/uuid"
 	"github.com/grpc-ecosystem/go-grpc-middleware/util/metautils"
