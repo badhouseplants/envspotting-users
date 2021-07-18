@@ -4,24 +4,28 @@ import (
 	"fmt"
 
 	postgresClient "github.com/badhouseplants/envspotting-users/third_party/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/badhouseplants/envspotting-users/tools/logger"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
 func Migrate() {
+	log := logger.GetServerLogger()
 	params := postgresClient.NewConnectionParams()
 	connectionString := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", params.Username, params.Password, params.Host, params.Port, params.Database)
-	// fsrc, err := (&file.File{}).Open("file://migrations")
-	// if err != nil {
-		// panic(err)
-	// }
-
 	m, err := migrate.New(
-		"file://migrations/",
+		"file://migrations/scripts",
 		connectionString)
 	if err != nil {
-		panic(err)
+		log.Error(err)
 	}
-	m.Steps(2)
+	err = m.Up()
+	if err != nil {
+		if err == migrate.ErrNoChange {
+			log.Info(err)
+		} else {
+			log.Error(err)
+		}
+	}
 }

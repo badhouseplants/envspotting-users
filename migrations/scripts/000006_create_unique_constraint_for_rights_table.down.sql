@@ -1,0 +1,1 @@
+ALTER TABLE rights DROP CONSTRAINT unique_right;
