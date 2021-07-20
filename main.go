@@ -5,7 +5,10 @@ import (
 	"net"
 
 	"github.com/badhouseplants/envspotting-users/migrations"
-	accserv "github.com/badhouseplants/envspotting-users/service/accounts"
+	accounts "github.com/badhouseplants/envspotting-users/service/accounts"
+	authentication "github.com/badhouseplants/envspotting-users/service/authentication"
+	authorization "github.com/badhouseplants/envspotting-users/service/authorization"
+	rights "github.com/badhouseplants/envspotting-users/service/rights"
 	"github.com/badhouseplants/envspotting-users/tools/logger"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
@@ -53,7 +56,10 @@ func setupGrpcStreamOpts() grpc.ServerOption {
 }
 
 func registerServices(grpcServer *grpc.Server) {
-	accserv.Register(grpcServer)
+	accounts.Register(grpcServer)
+	authentication.Register(grpcServer)
+	authorization.Register(grpcServer)
+	rights.Register(grpcServer)
 	// Disable on prod env
 	reflection.Register(grpcServer)
 }
