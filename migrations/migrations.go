@@ -10,7 +10,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
-func Migrate() {
+func Migrate() error {
 	log := logger.GetServerLogger()
 	params := postgresClient.NewConnectionParams()
 	connectionString := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", params.Username, params.Password, params.Host, params.Port, params.Database)
@@ -19,6 +19,7 @@ func Migrate() {
 		connectionString)
 	if err != nil {
 		log.Error(err)
+		return err
 	}
 	err = m.Up()
 	if err != nil {
@@ -26,6 +27,8 @@ func Migrate() {
 			log.Info(err)
 		} else {
 			log.Error(err)
+			return err
 		}
 	}
+	return nil
 }

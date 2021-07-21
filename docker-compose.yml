@@ -3,10 +3,13 @@ version: "3.9"
 
 services:
   postgres:
+    volumes:
+      - ./postgres:/docker-entrypoint-initdb.d
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: user
+      POSTGRES_MULTIPLE_DATABASES: users,applications
+      POSTGRES_USER: docker-user
       POSTGRES_PASSWORD: qwertyu9
       POSTGRES_DB: aggregator
       POSTGRES_HOST: postgres

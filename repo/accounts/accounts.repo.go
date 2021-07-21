@@ -28,25 +28,23 @@ type AccountStore interface {
 	GetPasswordByUsername(context.Context, string) (string, codes.Code, error)
 	GetGitlabTokenByID(context.Context, *accounts.AccountId) (string, codes.Code, error)
 	// Write
-	Create(context.Context, *accounts.AccountInfoWithSensitive) (codes.Code, error)
+	CreateUser(context.Context, *accounts.AccountInfoWithSensitive) (codes.Code, error)
 	UpdateUser(context.Context, *accounts.FullAccountInfo) (codes.Code, error)
 	UpdatePassword(context.Context, *accounts.AccountInfoWithSensitive) (codes.Code, error)
 	AddAppToUser(context.Context, string, *applications.AppId) (codes.Code, error)
 }
 
 type AccountRepo struct {
-	Pool      *pgxpool.Pool
+	Pool      *pgxpool.Conn
 	CreatedAt time.Time
 }
 
 //Local errors
 var (
-	// ErrUserNotFoundByID is and example of a good naming
-	ErrUserNotFoundByID = func(id string) error {
+	errUserNotFoundByID = func(id string) error {
 		return fmt.Errorf("user with this id can't be found: %s", id)
 	}
-	// ErrUserNotFoundByNameis and example of a good naming
-	ErrUserNotFoundByName = func(username string) error {
+	errUserNotFoundByName = func(username string) error {
 		return fmt.Errorf("user with this name can't be found: %s", username)
 	}
 )
@@ -63,7 +61,7 @@ func (repo AccountRepo) GetUser(ctx context.Context, id *accounts.AccountId) (*a
 	err := repo.Pool.QueryRow(ctx, sql, id.GetId()).Scan(&acc.Id, &acc.Username)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return nil, codes.NotFound, ErrUserNotFoundByID(id.GetId())
+			return nil, codes.NotFound, errUserNotFoundByID(id.GetId())
 		} else {
 			log.Error(err)
 			return nil, codes.Internal, err
@@ -84,7 +82,7 @@ func (repo AccountRepo) SelfGetUser(ctx context.Context, id *accounts.AccountId)
 	err := repo.Pool.QueryRow(ctx, sql, id.GetId()).Scan(&acc.Id, &acc.Username, &acc.GitlabToken)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return nil, codes.NotFound, ErrUserNotFoundByID(id.GetId())
+			return nil, codes.NotFound, errUserNotFoundByID(id.GetId())
 		} else {
 			log.Error(err)
 			return nil, codes.Internal, err
@@ -133,7 +131,7 @@ func (repo AccountRepo) GetPasswordByUsername(ctx context.Context, username stri
 	err := repo.Pool.QueryRow(ctx, sql, username).Scan(&password)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return "", codes.NotFound, ErrUserNotFoundByName(username)
+			return "", codes.NotFound, errUserNotFoundByName(username)
 		} else {
 			log.Error(err)
 			return "", codes.Internal, err
@@ -150,11 +148,10 @@ func (repo AccountRepo) GetIDByUsername(ctx context.Context, username string) (s
 		log = logger.GetGrpcLogger(ctx)
 		id  string
 	)
-
 	err := repo.Pool.QueryRow(ctx, sql, username).Scan(&id)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return "", codes.NotFound, ErrUserNotFoundByName(username)
+			return "", codes.NotFound, errUserNotFoundByName(username)
 		} else {
 			log.Error(err)
 			return "", codes.Internal, err
@@ -175,7 +172,7 @@ func (repo AccountRepo) GetGitlabTokenByID(ctx context.Context, id *accounts.Acc
 	err := repo.Pool.QueryRow(ctx, sql, id.GetId()).Scan(&token)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return "", codes.NotFound, ErrUserNotFoundByID(id.GetId())
+			return "", codes.NotFound, errUserNotFoundByID(id.GetId())
 		} else {
 			log.Error(err)
 			return "", codes.Internal, err
@@ -184,8 +181,8 @@ func (repo AccountRepo) GetGitlabTokenByID(ctx context.Context, id *accounts.Acc
 	return token, codes.OK, nil
 }
 
-// Create a new user  in database
-func (repo AccountRepo) Create(ctx context.Context, acc *accounts.AccountInfoWithSensitive) (code codes.Code, err error) {
+// CreateUser a new user  in database
+func (repo AccountRepo) CreateUser(ctx context.Context, acc *accounts.AccountInfoWithSensitive) (code codes.Code, err error) {
 	// SQL
 	const sql = "INSERT INTO users (id, username, password) VALUES ($1, $2, $3)"
 
@@ -217,7 +214,7 @@ func (repo AccountRepo) UpdateUser(ctx context.Context, acc *accounts.FullAccoun
 
 	tag, err := repo.Pool.Exec(ctx, sql, acc.GetId(), acc.GetUsername(), acc.GetGitlabToken())
 	if tag.RowsAffected() == 0 {
-		return codes.NotFound, ErrUserNotFoundByID(acc.GetId())
+		return codes.NotFound, errUserNotFoundByID(acc.GetId())
 	}
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -242,7 +239,7 @@ func (repo AccountRepo) UpdatePassword(ctx context.Context, acc *accounts.Accoun
 
 	tag, err := repo.Pool.Exec(ctx, sql, acc.GetId(), acc.GetUsername(), acc.GetPassword())
 	if tag.RowsAffected() == 0 {
-		return codes.NotFound, ErrUserNotFoundByID(acc.GetId())
+		return codes.NotFound, errUserNotFoundByID(acc.GetId())
 	}
 	if err != nil {
 		log.Error(err)
@@ -261,7 +258,7 @@ func (repo AccountRepo) AddAppToUser(ctx context.Context, userID string, appID *
 
 	tag, err := repo.Pool.Exec(ctx, sql, userID, appID.Id)
 	if tag.RowsAffected() == 0 {
-		return codes.NotFound, ErrUserNotFoundByID(userID)
+		return codes.NotFound, errUserNotFoundByID(userID)
 	}
 	if err != nil {
 		log.Error(err)

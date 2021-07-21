@@ -16,18 +16,21 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-var initRepo = func() repo.AccountStore {
-	var accrepo repo.AccountStore
-	accrepo = repo.AccountRepo{
-		Pool:      postgres.Pool(),
-		CreatedAt: time.Now(),
+var accrepo repo.AccountStore
+
+var initRepo = func(ctx context.Context) repo.AccountStore {
+	if accrepo == nil {
+		accrepo = repo.AccountRepo{
+			Pool:      postgres.Pool(ctx),
+			CreatedAt: time.Now(),
+		}
 	}
 	return accrepo
 }
 
 // Create a new user
 func Create(ctx context.Context, in *accounts.AccountCreds) (*accounts.AccountInfo, error) {
-	repo := initRepo()
+	repo := initRepo(ctx)
 
 	id := uuid.New().String()
 	user := &accounts.AccountInfoWithSensitive{
@@ -37,8 +40,8 @@ func Create(ctx context.Context, in *accounts.AccountCreds) (*accounts.AccountIn
 	}
 	in.Reset()
 
-	code, err := repo.Create(ctx, user)
-	if code != codes.OK {
+	code, err := repo.CreateUser(ctx, user)
+	if err != nil {
 		return nil, status.Error(code, err.Error())
 	}
 
@@ -50,7 +53,7 @@ func Create(ctx context.Context, in *accounts.AccountCreds) (*accounts.AccountIn
 }
 
 func SelfGet(ctx context.Context, in *accounts.AccountId) (*accounts.FullAccountInfo, error) {
-	repo := initRepo()
+	repo := initRepo(ctx)
 	user, code, err := repo.SelfGetUser(ctx, in)
 	if err != nil {
 		return nil, status.Error(code, err.Error())
@@ -60,7 +63,7 @@ func SelfGet(ctx context.Context, in *accounts.AccountId) (*accounts.FullAccount
 }
 
 func Get(ctx context.Context, in *accounts.AccountId) (*accounts.AccountInfo, error) {
-	repo := initRepo()
+	repo := initRepo(ctx)
 	user, code, err := repo.GetUser(ctx, in)
 	if err != nil {
 		return nil, status.Error(code, err.Error())
@@ -69,7 +72,7 @@ func Get(ctx context.Context, in *accounts.AccountId) (*accounts.AccountInfo, er
 }
 
 func UpdateUser(ctx context.Context, in *accounts.FullAccountInfo) (*accounts.FullAccountInfo, error) {
-	repo := initRepo()
+	repo := initRepo(ctx)
 	_, err := repo.UpdateUser(ctx, in)
 	if err != nil {
 		return nil, err
@@ -78,7 +81,7 @@ func UpdateUser(ctx context.Context, in *accounts.FullAccountInfo) (*accounts.Fu
 }
 
 func UpdatePassword(ctx context.Context, in *accounts.PasswordUpdate) (*common.EmptyMessage, error) {
-	repo := initRepo()
+	repo := initRepo(ctx)
 	creds := &accounts.AccountCreds{
 		Username: in.GetUsername(),
 		Password: in.GetOldPassword(),
@@ -99,7 +102,7 @@ func UpdatePassword(ctx context.Context, in *accounts.PasswordUpdate) (*common.E
 }
 
 func List(ctx context.Context, stream accounts.Accounts_ListServer, options *accounts.AccountsListOptions) error {
-	repo := initRepo()
+	repo := initRepo(ctx)
 	code, err := repo.ListUsers(ctx, stream, options)
 	if err != nil {
 		return status.Error(code, err.Error())
@@ -108,7 +111,7 @@ func List(ctx context.Context, stream accounts.Accounts_ListServer, options *acc
 }
 
 func AddAppToUser(ctx context.Context, in *applications.AppId) (*common.EmptyMessage, error) {
-	repo := initRepo()
+	repo := initRepo(ctx)
 	userID, err := token.ParseUserID(ctx)
 	if err != nil {
 		return nil, err
@@ -125,9 +128,9 @@ func CheckCreds(ctx context.Context, in *accounts.AccountCreds) error {
 	var (
 		password string
 		err      error
-		code codes.Code
+		code     codes.Code
 	)
-	repo := initRepo()
+	repo := initRepo(ctx)
 	// Get user from the database
 	password, code, err = repo.GetPasswordByUsername(ctx, in.Username)
 	if err != nil {
@@ -141,7 +144,7 @@ func CheckCreds(ctx context.Context, in *accounts.AccountCreds) error {
 }
 
 func GetGitlabTokenByID(ctx context.Context, id *accounts.AccountId) (*accounts.GitlabToken, error) {
-	repo := initRepo()
+	repo := initRepo(ctx)
 	token, code, err := repo.GetGitlabTokenByID(ctx, id)
 	if err != nil {
 		return nil, status.Error(code, err.Error())

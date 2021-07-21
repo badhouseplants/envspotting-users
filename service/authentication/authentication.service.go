@@ -16,37 +16,45 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-var initRepo = func() repo.AccountStore {
-	var accrepo repo.AccountStore
-	accrepo = repo.AccountRepo{
-		Pool:      postgres.Pool(),
-		CreatedAt: time.Now(),
+var accrepo repo.AccountStore
+
+var initRepo = func(ctx context.Context) repo.AccountStore {
+	if accrepo == nil {
+		accrepo = repo.AccountRepo{
+			Pool:      postgres.Pool(ctx),
+			CreatedAt: time.Now(),
+		}
 	}
 	return accrepo
 }
 
+// SingUp creates a user and generates tokens
 func SignUp(ctx context.Context, in *accounts.AccountCreds) (*common.EmptyMessage, error) {
-	repo := initRepo()
 	log := logger.GetGrpcLogger(ctx)
-	_, err := accountsService.Create(ctx, in)
+	repo := initRepo(ctx)
+
+	user, err := accountsService.Create(ctx, in)
 	if err != nil {
 		log.Error(err)
 		return nil, err
 	}
-	userId, code, err := repo.GetIDByUsername(ctx, in.Username)
+
+	userId, code, err := repo.GetIDByUsername(ctx, user.Username)
 	if err != nil {
 		return nil, status.Error(code, err.Error())
 	}
+
 	out, err := authService.GenerateToken(ctx, userId)
 	if err != nil {
 		return nil, err
 	}
+
 	return out, nil
 }
 
 // SignIn with login and password
 func SignIn(ctx context.Context, in *accounts.AccountCreds) (*common.EmptyMessage, error) {
-	repo := initRepo()
+	repo := initRepo(ctx)
 	// Get user from the database
 	password, code, err := repo.GetPasswordByUsername(ctx, in.Username)
 	if err != nil {

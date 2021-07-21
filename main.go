@@ -1,86 +1,40 @@
 package main
 
 import (
-	"fmt"
-	"net"
-
 	"github.com/badhouseplants/envspotting-users/migrations"
-	accounts "github.com/badhouseplants/envspotting-users/service/accounts"
-	authentication "github.com/badhouseplants/envspotting-users/service/authentication"
-	authorization "github.com/badhouseplants/envspotting-users/service/authorization"
-	rights "github.com/badhouseplants/envspotting-users/service/rights"
-	"github.com/badhouseplants/envspotting-users/tools/logger"
+	"github.com/badhouseplants/envspotting-users/server"
 	"github.com/spf13/viper"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/reflection"
-
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
-	grpc_logrus "github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
-	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 )
 
-var (
-	host string
-)
+const AppVersion = "0.0.1"
 
 func init() {
 	// app variables
-	viper.SetDefault("app_host", "0.0.0.0")
-	viper.SetDefault("app_port", "9090")
-	viper.SetDefault("database_username", "user")
+	viper.SetDefault("environment", "dev")
+	// server variables
+	viper.SetDefault("envspotting_users_host", "0.0.0.0")
+	viper.SetDefault("envspotting_users_port", "9090")
+	// database variables
+	viper.SetDefault("database_username", "docker_user")
 	viper.SetDefault("database_password", "qwertyu9")
-	viper.SetDefault("database_name", "aggregator")
+	viper.SetDefault("database_name", "users")
 	viper.SetDefault("database_host", "localhost")
 	viper.SetDefault("database_port", "5432")
-	viper.AutomaticEnv() // read in environment variables that match)
+	// redis variables
+	viper.SetDefault("redis_host", "localhost:6379")
+	viper.SetDefault("redis_password", "")
+	viper.SetDefault("redis_db", "0")
+	// auth tokens variables
+	viper.SetDefault("refresh_token_expiry", "24") // hours
+	// read environment variables that match
+	viper.AutomaticEnv()
 }
 
 func main() {
-	// log := logger.GetServerLogger()
-	migrations.Migrate()
-	Serve()
-}
-
-func setupGrpcUnaryOpts() grpc.ServerOption {
-	return grpc_middleware.WithUnaryServerChain(
-		grpc_ctxtags.UnaryServerInterceptor(grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.CodeGenRequestFieldExtractor)),
-		grpc_logrus.UnaryServerInterceptor(logger.GrpcLogrusEntry, logger.GrpcLogrusOpts...),
-	)
-}
-
-func setupGrpcStreamOpts() grpc.ServerOption {
-	return grpc_middleware.WithStreamServerChain(
-		grpc_ctxtags.StreamServerInterceptor(grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.CodeGenRequestFieldExtractor)),
-		grpc_logrus.StreamServerInterceptor(logger.GrpcLogrusEntry, logger.GrpcLogrusOpts...),
-	)
-}
-
-func registerServices(grpcServer *grpc.Server) {
-	accounts.Register(grpcServer)
-	authentication.Register(grpcServer)
-	authorization.Register(grpcServer)
-	rights.Register(grpcServer)
-	// Disable on prod env
-	reflection.Register(grpcServer)
-}
-
-func Serve() {
-	log := logger.GetServerLogger()
-	// seting up grpc server
-	listener, err := net.Listen("tcp", getHost())
-	if err != nil {
-		log.Fatal(err)
+	if err := migrations.Migrate(); err != nil {
+		panic(err)
 	}
-	grpcServer := grpc.NewServer(
-		setupGrpcStreamOpts(),
-		setupGrpcUnaryOpts(),
-	)
-	registerServices(grpcServer)
-	log.Infof("starting to serve on %s", getHost())
-	grpcServer.Serve(listener)
-}
-
-func getHost() string {
-	host = fmt.Sprintf("%s:%s", viper.GetString("app_host"), viper.GetString("app_port"))
-	return host
+	if err := server.Serve(); err != nil {
+		panic(err)
+	}
 }

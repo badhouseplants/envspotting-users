@@ -4,13 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/badhouseplants/envspotting-users/third_party/redis"
 	"github.com/dgrijalva/jwt-go"
-	"github.com/google/uuid"
 	"github.com/grpc-ecosystem/go-grpc-middleware/util/metautils"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"time"
@@ -22,7 +18,6 @@ var (
 	jwtSecret = []byte(viper.GetString("jwt_secret"))
 	// TODO: put in environment @allanger
 	jwtExpirationTime time.Time
-	rtExpirationTime  = 24 * 7 * time.Hour
 )
 
 type JWTClaims struct {
@@ -30,35 +25,25 @@ type JWTClaims struct {
 	jwt.StandardClaims
 }
 
-type RefreshToken struct {
-	ID                 string
-	BrowserFingerprint string `redis:"browser_fingerprint"`
-	UserID             string `redis:"user_id"`
-}
-
-type Tokens struct {
-	JWT string
-	// RT UUID
-	RT string
-}
-
-func Generate(ctx context.Context, userID string) (*Tokens, error) {
+func Generate(ctx context.Context, userID string) (string, codes.Code, error) {
+	// FIXME: time
 	jwtExpirationTime = time.Now().Add(10000 * time.Second)
-	tokens := &Tokens{}
-	if err := tokens.NewJWT(userID); err != nil {
-		return nil, err
+	jwtClaims := &JWTClaims{
+		UserID: userID,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: jwtExpirationTime.Unix(),
+			IssuedAt:  time.Now().Unix(),
+		},
 	}
-
-	if err := tokens.NewRT(ctx, userID); err != nil {
-		return nil, err
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwtClaims)
+	tknStr, err := token.SignedString(jwtSecret)
+	if err != nil {
+		return "", codes.Internal, err
 	}
-	// Creating refresh token
-	header := metadata.Pairs("jwt-token", tokens.JWT, "rt-token", tokens.RT)
-	grpc.SendHeader(ctx, header)
-	return tokens, nil
+	return tknStr, codes.OK, nil
 }
 
-func Validate(ctx context.Context) error {
+func Validate(ctx context.Context) (codes.Code, error) {
 	tknStr := metautils.ExtractIncoming(ctx).Get("authorization")
 	// Initialize a new instance of `Claims`
 	claims := &JWTClaims{}
@@ -67,17 +52,14 @@ func Validate(ctx context.Context) error {
 	})
 	if err != nil {
 		if err == jwt.ErrSignatureInvalid {
-			return status.Error(codes.Unauthenticated, err.Error())
-
+			return codes.Unauthenticated, err
 		}
-		return status.Error(codes.Aborted, err.Error())
-
+		return codes.Aborted, err
 	}
 	if !tkn.Valid {
-		return status.Error(codes.Unauthenticated, err.Error())
-
+		return codes.Unauthenticated, err
 	}
-	return nil
+	return codes.OK, nil
 }
 
 func ParseUserID(ctx context.Context) (string, error) {
@@ -92,94 +74,36 @@ func ParseUserID(ctx context.Context) (string, error) {
 		userID := fmt.Sprintf("%v", claims["userId"])
 		return userID, nil
 	} else {
-		return "", status.Error(codes.PermissionDenied, ("wrong jwt token"))
+		return "", codes.PermissionDenied, ("wrong jwt
 	}
 }
 
-func (t *Tokens) NewJWT(userID string) (err error) {
-	jwtClaims := &JWTClaims{
-		UserID: userID,
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: jwtExpirationTime.Unix(),
-			IssuedAt:  time.Now().Unix(),
-		},
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwtClaims)
-	t.JWT, err = token.SignedString(jwtSecret)
- 	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (t *Tokens) NewRT(ctx context.Context, userID string) (err error) {
-	browserFingerprint, err := getBrowserFingerprint(ctx)
-	if err != nil {
-		return err
-	}
-	id := uuid.NewString()
-	// Save to redis
-	r := redis.Client()
-	redCmd := r.HSet(ctx, id,
-		"user_id", userID,
-		"browser_fingerprint", browserFingerprint,
-	)
-
-	if redCmd.Err() != nil {
-		return redCmd.Err()
-	}
-	r.Expire(ctx, id, rtExpirationTime)
-	t.RT = id
-	return nil
-}
-
-func ValidateJWT() {}
-
-func RefreshTokens(ctx context.Context) (*Tokens, error) {
-	r := redis.Client()
-	rt := &RefreshToken{}
-	rtID, err := getRefreshToken(ctx)
-	if err != nil {
-		return nil, status.Error(codes.PermissionDenied, err.Error())
-	}
-	userID, err := getUserID(ctx)
-	if err != nil {
-		return nil, status.Error(codes.PermissionDenied, err.Error())
-	}
-	oldRT := r.HGetAll(ctx, rtID)
-	r.Del(ctx, rtID)
-	oldRT.Scan(rt)
-	browserFingerprint, err := getBrowserFingerprint(ctx)
-	if err != nil {
-		return nil, nil
-	} else if userID != rt.UserID {
-		fmt.Println(rt.UserID)
-		fmt.Println(userID)
-		return nil, status.Error(codes.PermissionDenied, "refresh token isn't owned by this user")
-	} else if browserFingerprint != rt.BrowserFingerprint {
+// func RefreshTokens(ctx context.Context) (*Tokens, error) {
+	// r := redis.Client()
+	// rt := &RefreshToken{}
+	// rtID, err := getRefreshToken(ctx)
+	// if err != nil {
+		// return nil, codes.PermissionDenied, err
+	// }
+	// userID, err := getUserID(ctx)
+	// if err != nil {
+		// return nil, codes.PermissionDenied, err
+	// }
+	// oldRT := r.HGetAll(ctx, rtID)
+	// r.Del(ctx, rtID)
+	// oldRT.Scan(rt)
+	// browserFingerprint, err := getBrowserFingerprint(ctx)
+	// if err != nil {
+		// return nil, nil
+	// } else if userID != rt.UserID {
+		// fmt.Println(rt.UserID)
+		// fmt.Println(userID)
+		// return nil, codes.PermissionDenied, "refresh token isn't owned by this
+	// } else if browserFingerprint != rt.BrowserFingerprint {
 		// TODO: fix error message @allanger
-		return nil, status.Error(codes.PermissionDenied, "suspicious activity, browser fingerprint is wrong")
-	} else {
-		return Generate(ctx, userID)
-	}
-}
-
-func getBrowserFingerprint(ctx context.Context) (string, error) {
-	return "finger", nil
-}
-
-func getRefreshToken(ctx context.Context) (string, error) {
-	oldRt := metautils.ExtractIncoming(ctx).Get("refresh-token-id")
-	if len(oldRt) == 0 {
-		return "", nil
-	}
-	return oldRt, nil
-}
-
-func getUserID(ctx context.Context) (string, error) {
-	userID := metautils.ExtractIncoming(ctx).Get("user-id")
-	if len(userID) == 0 {
-		return "", nil
-	}
-	return userID, nil
-}
+		// return nil, codes.PermissionDenied, "suspicious activity, browser fingerprint is
+	// } else {
+		// return Generate(ctx, userID)
+	// }
+// }
+// 

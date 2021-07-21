@@ -10,73 +10,76 @@ import (
 	repo "github.com/badhouseplants/envspotting-users/repo/rights"
 	"github.com/badhouseplants/envspotting-users/third_party/postgres"
 	"github.com/badhouseplants/envspotting-users/tools/token"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/google/uuid"
 )
 
-var initRepo = func() repo.RightStore {
-	rightsrepo := repo.RightStore{
-		Pool:      postgres.Pool(),
-		CreatedAt: time.Now(),
+var rightsrepo repo.RightsStore
+
+var initRepo = func(ctx context.Context) repo.RightsStore {
+	if rightsrepo == nil {
+		rightsrepo = repo.RightsRepo{
+			Pool:      postgres.Pool(ctx),
+			CreatedAt: time.Now(),
+		}
 	}
 	return rightsrepo
 }
 
-
 func Create(ctx context.Context, in *rights.AccessRuleWithoutId) (*rights.AccessRuleInfo, error) {
-	repo := initRepo()
+	repo := initRepo(ctx)
 	rightOut := &rights.AccessRuleInfo{
 		Id:            uuid.NewString(),
 		UserId:        in.UserId,
 		ApplicationId: in.ApplicationId,
 		AccessRight:   rights.AccessRights(in.AccessRight),
 	}
-	if err := repo.Create(ctx, rightOut); err != nil {
-		return nil, err
+	code, err := repo.CreateRight(ctx, rightOut)
+	if err != nil {
+		return nil, status.Error(code, err.Error())
 	}
 	return rightOut, nil
 }
 
 func Update(ctx context.Context, in *rights.AccessRuleIdAndRight) (*rights.AccessRuleIdAndRight, error) {
-	repo := initRepo()
-	err := repo.Update(ctx, in)
+	repo := initRepo(ctx)
+	code, err := repo.UpdateRight(ctx, in)
 	if err != nil {
-		return nil, err
+		return nil, status.Error(code, err.Error())
 	}
 	return in, nil
 }
 
 func Delete(ctx context.Context, in *rights.AccessRuleId) (*common.EmptyMessage, error) {
-	repo := initRepo()
-	err := repo.Delete(ctx, in)
+	repo := initRepo(ctx)
+	code, err := repo.DeleteRight(ctx, in)
 	if err != nil {
-		return nil, err
+		return nil, status.Error(code, err.Error())
 	}
 	return &common.EmptyMessage{}, nil
 }
 
 func Get(ctx context.Context, in *rights.AccessRuleId) (*rights.AccessRuleInfo, error) {
-	repo := initRepo()
-	rightOut, err := repo.Get(ctx, in)
+	repo := initRepo(ctx)
+	rightOut, code, err := repo.GetRight(ctx, in)
 	if err != nil {
-		return nil, err
+		return nil, status.Error(code, err.Error())
 	}
 	return rightOut, nil
 }
 
 func List(ctx context.Context, in *rights.RightsListOptions, stream rights.Rights_ListServer) (err error) {
-	repo := initRepo()
-	err = repo.List(ctx, stream, in)
+	repo := initRepo(ctx)
+	code, err := repo.ListRights(ctx, stream, in)
 	if err != nil {
-		return err
+		return status.Error(code, err.Error())
 	}
 	return nil
 }
 
 func CheckRight(ctx context.Context, applicationID string, right *rights.AccessRights) (err error) {
-	repo := initRepo()
+	repo := initRepo(ctx)
 	userID, err := token.ParseUserID(ctx)
 	if err != nil {
 		return err
@@ -85,21 +88,18 @@ func CheckRight(ctx context.Context, applicationID string, right *rights.AccessR
 		UserId:        userID,
 		ApplicationId: applicationID,
 	}
-	access, err = repo.GetAccessRight(ctx, access)
-	if err != nil || access.AccessRight < rights.AccessRights(*right)  {
-		return status.Error(codes.PermissionDenied, "action is not allowed by access rules")
+	access, code, err := repo.GetAccessRight(ctx, access)
+	if err != nil || access.AccessRight < rights.AccessRights(*right) {
+		return status.Error(code, err.Error())
 	}
 	return nil
 }
 
 func GetAppIDByRightID(ctx context.Context, rightID string) (*applications.AppId, error) {
-	repo := initRepo()
-	appId, err := repo.GetAppIDByRightID(ctx, rightID)
+	repo := initRepo(ctx)
+	appID, code, err := repo.GetAppIDByRightID(ctx, rightID)
 	if err != nil {
-		return nil, err
+		return nil, status.Error(code, err.Error())
 	}
-	return &applications.AppId{
-		Id: appId,
-	}, err
+	return appID, err
 }
-

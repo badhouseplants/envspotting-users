@@ -7,11 +7,10 @@ import (
 
 	"github.com/badhouseplants/envspotting-users/tools/logger"
 
+	"github.com/jackc/pgx"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/spf13/viper"
 )
-
-// TODO: add context here
 
 // ConnectionParams to open database pool
 type ConnectionParams struct {
@@ -33,37 +32,47 @@ func NewConnectionParams() *ConnectionParams {
 }
 
 var (
-	pool    *pgxpool.Pool
-	retries = 5
+	pool       *pgxpool.Pool
+	maxRetries = 5
 )
 
-// Pool return db coonection pool
-func Pool() *pgxpool.Pool {
-	var log = logger.GetServerLogger()
+var errCantConnect = "unable to connect to database"
+
+func Pool(ctx context.Context) *pgxpool.Conn {
+	log := logger.GetServerLogger()
 	if pool == nil {
-		err := OpenConnectionPool()
+		err := openConnectionPool(ctx)
 		if err != nil {
-			log.Fatal(err)
 			return nil
 		}
 	}
-	return pool
+	conn, err := pool.Acquire(ctx)
+
+	if err == pgx.ErrDeadConn {
+		if maxRetries > 0 {
+			log.Infof("%v, try acquiring a non-dead connection", err)
+			pool.Close()
+			openConnectionPool(ctx)
+			return Pool(ctx)
+		}
+	}
+	return conn
 }
 
-// OpenConnectionPool opens new connection pool
-func OpenConnectionPool() (err error) {
-	params := NewConnectionParams() // TODO: Refactor
+func openConnectionPool(ctx context.Context) error {
+	var err error
+	log := logger.GetServerLogger()
+	params := NewConnectionParams()
 	connectionString := fmt.Sprintf("postgres://%s:%s@%s:%s/%s", params.Username, params.Password, params.Host, params.Port, params.Database)
-	for i := 0; i < retries; i++ {
-		pool, err = pgxpool.Connect(context.Background(), connectionString)
-		if err == nil {
-			break
+	for i := 0; i < maxRetries; i++ {
+		pool, err = pgxpool.Connect(ctx, connectionString)
+		if err != nil {
+			log.Error(err)
+			time.Sleep(5 * time.Second)
+			continue
 		}
-		time.Sleep(5 * time.Second)
+		return nil
 	}
-	if err != nil {
-		return err
-	}
-
-	return nil
+	log.Error(errCantConnect)
+	return err
 }

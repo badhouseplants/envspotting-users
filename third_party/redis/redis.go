@@ -2,31 +2,33 @@
 package redis
 
 import (
-	"os"
+	"context"
 
+	"github.com/badhouseplants/envspotting-users/tools/logger"
 	"github.com/go-redis/redis/v8"
+	"github.com/spf13/viper"
 )
 
 var client *redis.Client
 
-// Client retur nredis client
-func Client() *redis.Client {
+// Client returns a redis client
+func Client(ctx context.Context) *redis.Client {
+	log := logger.GetServerLogger()
 	if client == nil {
 		NewClient()
+	}
+	status := client.Ping(ctx)
+	if status.Err() != nil {
+		log.Error(status.Err())
 	}
 	return client
 }
 
-// NewClient create redis client
-func NewClient() error {
-	redisAddr, exists := os.LookupEnv("REDIS_HOST")
-	if !exists {
-		redisAddr = "localhost:6379"
-	}
+// NewClient inits a redis client
+func NewClient() {
 	client = redis.NewClient(&redis.Options{
-		Addr:     redisAddr,
-		Password: "", // no password set
-		DB:       0,  // use default DB
+		Addr:     viper.GetString("redis_host"),
+		Password: viper.GetString("redis_password"),
+		DB:       viper.GetInt("redis_database"),
 	})
-	return nil
 }

@@ -17,6 +17,11 @@ func Register(grpcServer *grpc.Server) {
 	rights.RegisterRightsServer(grpcServer, &rightsGrpcServer{})
 }
 
+// TODO: add internal token
+func (s *rightsGrpcServer) Init(ctx context.Context, in *rights.AccessRuleWithoutId) (*rights.AccessRuleInfo, error) {
+	logger.EnpointHit(ctx)
+	return Create(ctx, in)
+}
 
 func (s *rightsGrpcServer) Create(ctx context.Context, in *rights.AccessRuleWithoutId) (*rights.AccessRuleInfo, error) {
 	logger.EnpointHit(ctx)
@@ -79,4 +84,13 @@ func (s *rightsGrpcServer) List(in *rights.RightsListOptions, stream rights.Righ
 		return err
 	}
 	return nil
+}
+
+func (s *rightsGrpcServer) CheckRight(ctx context.Context, in *rights.AccessRightRequest) (*common.EmptyMessage, error) {
+	logger.EnpointHit(ctx)
+	err := CheckRight(ctx, in.GetApplicationId().GetId(), in.GetAccessRight().Enum())
+	if err != nil {
+		return nil, err
+	}
+	return &common.EmptyMessage{}, nil
 }
