@@ -27,6 +27,7 @@ type AccountStore interface {
 	GetIDByUsername(context.Context, string) (string, codes.Code, error)
 	GetPasswordByUsername(context.Context, string) (string, codes.Code, error)
 	GetGitlabTokenByID(context.Context, *accounts.AccountId) (string, codes.Code, error)
+	GetAppsFromUser(context.Context, *accounts.AccountId) (*accounts.AccountsApps, codes.Code, error)
 	// Write
 	CreateUser(context.Context, *accounts.AccountInfoWithSensitive) (codes.Code, error)
 	UpdateUser(context.Context, *accounts.FullAccountInfo) (codes.Code, error)
@@ -181,7 +182,27 @@ func (repo AccountRepo) GetGitlabTokenByID(ctx context.Context, id *accounts.Acc
 	return token, codes.OK, nil
 }
 
-// CreateUser a new user  in database
+func (repo AccountRepo) GetAppsFromUser(ctx context.Context, acc *accounts.AccountId) (*accounts.AccountsApps, codes.Code, error) {
+	const sql = "SELECT applications FROM users WHERE id = $1"
+	var (
+		log  = logger.GetGrpcLogger(ctx)
+		apps = &accounts.AccountsApps{UserId: acc.Id}
+	)
+	// Not checking zero rows affected condition
+	err := repo.Pool.QueryRow(ctx, sql, acc.GetId()).Scan(&apps.Apps)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, codes.NotFound, errUserNotFoundByID(acc.GetId())
+		} else {
+			log.Error(err)
+			return nil, codes.Internal, err
+		}
+	}
+	return apps, codes.OK, nil
+
+}
+
+// CreateUser a new user in database
 func (repo AccountRepo) CreateUser(ctx context.Context, acc *accounts.AccountInfoWithSensitive) (code codes.Code, err error) {
 	// SQL
 	const sql = "INSERT INTO users (id, username, password) VALUES ($1, $2, $3)"
@@ -206,12 +227,11 @@ func (repo AccountRepo) CreateUser(ctx context.Context, acc *accounts.AccountInf
 
 // UpdateUser is upadting account data in database
 func (repo AccountRepo) UpdateUser(ctx context.Context, acc *accounts.FullAccountInfo) (codes.Code, error) {
-	const sql = "UPDATE users SET username = $2, gitlab_token = $3, WHERE id = $1"
+	const sql = "UPDATE users SET username=$2, gitlab_token=$3 WHERE id=$1 RETURNING *"
 
 	var (
 		log = logger.GetGrpcLogger(ctx)
 	)
-
 	tag, err := repo.Pool.Exec(ctx, sql, acc.GetId(), acc.GetUsername(), acc.GetGitlabToken())
 	if tag.RowsAffected() == 0 {
 		return codes.NotFound, errUserNotFoundByID(acc.GetId())

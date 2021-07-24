@@ -7,6 +7,9 @@ import (
 	"github.com/badhouseplants/envspotting-go-proto/models/apps/applications"
 	"github.com/badhouseplants/envspotting-go-proto/models/common"
 	"github.com/badhouseplants/envspotting-go-proto/models/users/accounts"
+	"github.com/badhouseplants/envspotting-go-proto/models/users/rights"
+	authserv "github.com/badhouseplants/envspotting-users/service/authorization"
+	rightserv "github.com/badhouseplants/envspotting-users/service/rights"
 	"github.com/badhouseplants/envspotting-users/tools/logger"
 	"github.com/badhouseplants/envspotting-users/tools/token"
 	"google.golang.org/grpc"
@@ -68,17 +71,22 @@ func (s *accountsGrpcServer) List(in *accounts.AccountsListOptions, stream accou
 
 func (s *accountsGrpcServer) AddAppToUser(ctx context.Context, in *applications.AppId) (*common.EmptyMessage, error) {
 	logger.EnpointHit(ctx)
-	// err := CheckRight(ctx, in.Id, rights.AccessRights_ACCESS_RIGHTS_READ_UNSPECIFIED.Enum())
-	err := errors.New("Asdf")
+	err := rightserv.CheckRight(ctx, in.Id, rights.AccessRights_ACCESS_RIGHTS_READ_UNSPECIFIED.Enum())
 	if err != nil {
 		return nil, err
 	}
-	code, err := checkSelfOperation(ctx, in.Id)
+	userID, err := authserv.ParseIdFromToken(ctx, &common.EmptyMessage{})
+	if err != nil {
+		return nil, err
+	}
+	code, err := checkSelfOperation(ctx, userID.GetId())
 	if err != nil {
 		return nil, status.Error(code, err.Error())
 	}
 	return AddAppToUser(ctx, in)
 }
+
+
 
 func (s *accountsGrpcServer) SelfGet(ctx context.Context, in *accounts.AccountId) (*accounts.FullAccountInfo, error) {
 	logger.EnpointHit(ctx)
@@ -87,6 +95,15 @@ func (s *accountsGrpcServer) SelfGet(ctx context.Context, in *accounts.AccountId
 		return nil, status.Error(code, err.Error())
 	}
 	return SelfGet(ctx, in)
+}
+
+func (s *accountsGrpcServer) GetAppsFromUser(ctx context.Context, in *accounts.AccountId) (*accounts.AccountsApps, error) {
+	logger.EnpointHit(ctx)
+	code, err := checkSelfOperation(ctx, in.Id)
+	if err != nil {
+		return nil, status.Error(code, err.Error())
+	}
+	return GetAppsFromUser(ctx, in)
 }
 
 func (s *tokenGrpcServer) GetGitlabTokenByAccountID(ctx context.Context, in *accounts.AccountId) (*accounts.GitlabToken, error) {
@@ -98,12 +115,17 @@ func (s *tokenGrpcServer) GetGitlabTokenByAccountID(ctx context.Context, in *acc
 	return nil, nil
 }
 
+
 var checkSelfOperation = func(ctx context.Context, id string) (codes.Code, error) {
 	log := logger.GetGrpcLogger(ctx)
-	idFromToken, err := token.ParseUserID(ctx)
+	tknStr, code, err := authserv.GetAuthorizationToken(ctx)
+	if err != nil {
+		return code, err
+	}
+	idFromToken, code, err := token.ParseUserID(ctx, tknStr)
 	if err != nil {
 		log.Error(err)
-		return codes.Internal, err
+		return code, err
 	} else if id != idFromToken {
 		return codes.PermissionDenied, errors.New(ErrSelfOperation)
 	}

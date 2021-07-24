@@ -74,7 +74,12 @@ func (s *rightsGrpcServer) Get(ctx context.Context, in *rights.AccessRuleId) (*r
 
 func (s *rightsGrpcServer) List(in *rights.RightsListOptions, stream rights.Rights_ListServer) (err error) {
 	logger.EnpointHit(stream.Context())
-	err = CheckRight(stream.Context(), in.AppId.Id, rights.AccessRights_ACCESS_RIGHTS_DELETE.Enum())
+
+	err = CheckRight(
+		stream.Context(),
+		in.AppId.Id,
+		rights.AccessRights_ACCESS_RIGHTS_DELETE.Enum(),
+	)
 	if err != nil {
 		return err
 	}
@@ -84,6 +89,11 @@ func (s *rightsGrpcServer) List(in *rights.RightsListOptions, stream rights.Righ
 		return err
 	}
 	return nil
+}
+
+func (s *rightsGrpcServer) ListAvailableApps(in *rights.AvailableAppsListOptions, stream rights.Rights_ListAvailableAppsServer) (err error) {
+	logger.EnpointHit(stream.Context())
+	return ListAvailableApps(in, stream)
 }
 
 func (s *rightsGrpcServer) CheckRight(ctx context.Context, in *rights.AccessRightRequest) (*common.EmptyMessage, error) {

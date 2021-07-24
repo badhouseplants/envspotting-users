@@ -2,12 +2,11 @@ package token
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/dgrijalva/jwt-go"
-	"github.com/grpc-ecosystem/go-grpc-middleware/util/metautils"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	"time"
 
@@ -17,7 +16,6 @@ import (
 var (
 	jwtSecret = []byte(viper.GetString("jwt_secret"))
 	// TODO: put in environment @allanger
-	jwtExpirationTime time.Time
 )
 
 type JWTClaims struct {
@@ -27,7 +25,7 @@ type JWTClaims struct {
 
 func Generate(ctx context.Context, userID string) (string, codes.Code, error) {
 	// FIXME: time
-	jwtExpirationTime = time.Now().Add(10000 * time.Second)
+	jwtExpirationTime := time.Now().Add( viper.GetDuration("jwt_token_expiry") * time.Minute)
 	jwtClaims := &JWTClaims{
 		UserID: userID,
 		StandardClaims: jwt.StandardClaims{
@@ -43,8 +41,7 @@ func Generate(ctx context.Context, userID string) (string, codes.Code, error) {
 	return tknStr, codes.OK, nil
 }
 
-func Validate(ctx context.Context) (codes.Code, error) {
-	tknStr := metautils.ExtractIncoming(ctx).Get("authorization")
+func Validate(ctx context.Context, tknStr string) (codes.Code, error) {
 	// Initialize a new instance of `Claims`
 	claims := &JWTClaims{}
 	tkn, err := jwt.ParseWithClaims(tknStr, claims, func(token *jwt.Token) (interface{}, error) {
@@ -62,8 +59,7 @@ func Validate(ctx context.Context) (codes.Code, error) {
 	return codes.OK, nil
 }
 
-func ParseUserID(ctx context.Context) (string, error) {
-	tknStr := metautils.ExtractIncoming(ctx).Get("authorization")
+func ParseUserID(ctx context.Context, tknStr string) (string, codes.Code, error) {
 	hmacSecretString := jwtSecret // Value
 	hmacSecret := []byte(hmacSecretString)
 	token, _ := jwt.Parse(tknStr, func(token *jwt.Token) (interface{}, error) {
@@ -72,9 +68,9 @@ func ParseUserID(ctx context.Context) (string, error) {
 
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 		userID := fmt.Sprintf("%v", claims["userId"])
-		return userID, nil
+		return userID, codes.OK, nil
 	} else {
-		return "", codes.PermissionDenied, ("wrong jwt
+		return "", codes.PermissionDenied, errors.New("wrong jwt token is provided")
 	}
 }
 

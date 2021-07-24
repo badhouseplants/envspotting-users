@@ -9,11 +9,14 @@ import (
 	"github.com/badhouseplants/envspotting-go-proto/models/users/accounts"
 	repo "github.com/badhouseplants/envspotting-users/repo/accounts"
 	"github.com/badhouseplants/envspotting-users/third_party/postgres"
+	"github.com/badhouseplants/envspotting-users/tools/encryption"
 	"github.com/badhouseplants/envspotting-users/tools/hasher"
 	"github.com/badhouseplants/envspotting-users/tools/token"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	authserv "github.com/badhouseplants/envspotting-users/service/authorization"
 )
 
 var accrepo repo.AccountStore
@@ -58,6 +61,10 @@ func SelfGet(ctx context.Context, in *accounts.AccountId) (*accounts.FullAccount
 	if err != nil {
 		return nil, status.Error(code, err.Error())
 	}
+	user.GitlabToken, code, err = encryption.Decrypt(ctx, user.GitlabToken)
+	if err != nil {
+		return nil, status.Error(code, err.Error())
+	}
 	return user, nil
 
 }
@@ -72,8 +79,16 @@ func Get(ctx context.Context, in *accounts.AccountId) (*accounts.AccountInfo, er
 }
 
 func UpdateUser(ctx context.Context, in *accounts.FullAccountInfo) (*accounts.FullAccountInfo, error) {
+	var (
+		code codes.Code
+		err  error
+	)
 	repo := initRepo(ctx)
-	_, err := repo.UpdateUser(ctx, in)
+	in.GitlabToken, code, err = encryption.Encrypt(ctx, in.GitlabToken)
+	if err != nil {
+		return nil, status.Error(code, err.Error())
+	}
+	_, err = repo.UpdateUser(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -112,15 +127,29 @@ func List(ctx context.Context, stream accounts.Accounts_ListServer, options *acc
 
 func AddAppToUser(ctx context.Context, in *applications.AppId) (*common.EmptyMessage, error) {
 	repo := initRepo(ctx)
-	userID, err := token.ParseUserID(ctx)
+	tknStr, code, err := authserv.GetAuthorizationToken(ctx)
 	if err != nil {
-		return nil, err
+		return nil, status.Error(code, err.Error())
 	}
-	code, err := repo.AddAppToUser(ctx, userID, in)
+
+	userID, code, err := token.ParseUserID(ctx, tknStr)
+	if err != nil {
+		return nil, status.Error(code, err.Error())
+	}
+	code, err = repo.AddAppToUser(ctx, userID, in)
 	if err != nil {
 		return nil, status.Error(code, err.Error())
 	}
 	return &common.EmptyMessage{}, nil
+}
+
+func GetAppsFromUser(ctx context.Context, in *accounts.AccountId) (*accounts.AccountsApps, error) {
+	repo := initRepo(ctx)
+	apps, code, err := repo.GetAppsFromUser(ctx, in)
+	if err != nil {
+		return nil, status.Error(code, err.Error())
+	}
+	return apps, nil
 }
 
 // CheckCreds with login and password

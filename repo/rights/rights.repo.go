@@ -21,6 +21,7 @@ type RightsStore interface {
 	// Read
 	GetRight(context.Context, *rights.AccessRuleId) (*rights.AccessRuleInfo, codes.Code, error)
 	ListRights(context.Context, rights.Rights_ListServer, *rights.RightsListOptions) (codes.Code, error)
+	ListAvailableApps(context.Context, rights.Rights_ListAvailableAppsServer, *rights.AvailableAppsListOptions) (codes.Code, error)
 	GetAccessRight(context.Context, *rights.AccessRuleInfo) (*rights.AccessRuleInfo, codes.Code, error)
 	GetAppIDByRightID(context.Context, string) (*applications.AppId, codes.Code, error)
 	// Write
@@ -164,6 +165,38 @@ func (store RightsRepo) ListRights(ctx context.Context, stream rights.Rights_Lis
 	return codes.OK, nil
 }
 
+func (store RightsRepo) ListAvailableApps(ctx context.Context, stream rights.Rights_ListAvailableAppsServer, opt *rights.AvailableAppsListOptions) (codes.Code, error) {
+	const sql = "SELECT application_id FROM rights WHERE user_id = $1"
+
+	var (
+		log         = logger.GetGrpcLogger(ctx)
+		apps        = &rights.Applications{
+			ApplicationId: &applications.AppId{Id: ""},
+		}
+	)
+
+	rows, err := store.Pool.Query(ctx, sql, opt.AccountId.Id)
+	if err != nil {
+		log.Error(err)
+		return codes.Internal, err
+	}
+	// Stream applications
+	for rows.Next() {
+		// Scan apps into struct
+		err = rows.Scan(&apps.ApplicationId.Id)
+		if err != nil {
+			log.Error(err)
+			return codes.Internal, err
+		}
+		if err := stream.Send(apps); err != nil {
+			log.Error(err)
+			return codes.Internal, err
+		}
+	}
+	return codes.OK, nil
+
+}
+
 // GetAccessRight returns only access_right enum
 func (store RightsRepo) GetAccessRight(ctx context.Context, in *rights.AccessRuleInfo) (*rights.AccessRuleInfo, codes.Code, error) {
 	const sql = "SELECT access_right FROM rights WHERE user_id=$1 AND application_id=$2"
@@ -214,11 +247,21 @@ func (store RightsRepo) GetAppIDByRightID(ctx context.Context, rightID string) (
 
 // Parse protobuf enum to the postgres enum format
 var parseAccessRightsEnum = func(in string) (out string) {
-	var prefix = "ACCESS_RIGHTS_"
+	var (
+		prefix = "ACCESS_RIGHTS_"
+		suffix = "_UNSPECIFIED"
+	)
 	if strings.HasPrefix(in, prefix) {
 		out = strings.ReplaceAll(in, prefix, "")
-		return out
+	} else {
+		out = fmt.Sprintf("%s%s", prefix, in)
 	}
-	out = fmt.Sprintf("%s%s", prefix, in)
+	if strings.Contains(out, "READ") {
+		if strings.HasSuffix(out, suffix) {
+			out = strings.ReplaceAll(out, suffix, "")
+		} else {
+			out = fmt.Sprintf("%s%s", out, suffix)
+		}
+	}
 	return out
 }

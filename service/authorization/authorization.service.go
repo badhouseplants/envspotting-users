@@ -3,13 +3,13 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/badhouseplants/envspotting-go-proto/models/common"
 	"github.com/badhouseplants/envspotting-go-proto/models/users/accounts"
 	repo "github.com/badhouseplants/envspotting-users/repo/authorization"
 	"github.com/badhouseplants/envspotting-users/third_party/redis"
-	"github.com/badhouseplants/envspotting-users/tools/logger"
 	"github.com/badhouseplants/envspotting-users/tools/token"
 	"github.com/google/uuid"
 	"github.com/grpc-ecosystem/go-grpc-middleware/util/metautils"
@@ -34,14 +34,54 @@ var initRepo = func(ctx context.Context) repo.AuthorizationStore {
 var (
 	errUserIDNotProvided = errors.New("user id is not passed via metadata")
 	errBFNotProvided     = errors.New("browser fingerprint is not passed via metadata")
+	errTokenNotProvided  = errors.New("jwt or rt token is not provided via metadata")
+	errStrangeActivity   = errors.New("strange activity (wrong browser-fingerprint is provided)")
+	errTokenNotOwned     = errors.New("refresh token is not owned by this user")
 )
 
 // RefreshToken create a new pair of tokens and returns via metadata
 func RefreshToken(ctx context.Context, in *common.EmptyMessage) (*common.EmptyMessage, error) {
-	// _, err := token.RefreshTokens(ctx)
-	// if err != nil {
-	// return nil, err
-	// }
+	var (
+		err  error
+		code codes.Code
+	)
+	initRepo(ctx)
+	tknStr := metautils.ExtractIncoming(ctx).Get("refresh-token")
+
+	if len(tknStr) == 0 {
+		return nil, status.Error(codes.PermissionDenied, errTokenNotProvided.Error())
+	}
+
+	userID, code, err := getUserID(ctx)
+	if err != nil {
+		return nil, status.Error(code, err.Error())
+	}
+	bf, code, err := getBrowserFingerprint(ctx)
+	if err != nil {
+		return nil, status.Error(code, err.Error())
+	}
+	rt := &repo.RefreshToken{
+		ID: tknStr,
+	}
+	_, code, err = authrepo.GetRefreshToken(ctx, rt)
+	switch {
+	case err != nil:
+		return nil, status.Error(code, err.Error())
+	case rt.BrowserFingerprint != bf:
+		return nil, status.Error(codes.PermissionDenied, errStrangeActivity.Error())
+	case rt.UserID != userID:
+		fmt.Printf("%s - %s", rt.UserID, userID)
+		return nil, status.Error(codes.PermissionDenied, errTokenNotOwned.Error())
+	default:
+		code, err = authrepo.DelRefreshToken(ctx, rt)
+		if err != nil {
+			return nil, status.Error(code, err.Error())
+		}
+		_, err = GenerateToken(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &common.EmptyMessage{}, nil
 }
 
@@ -49,22 +89,30 @@ func ParseIdFromToken(ctx context.Context, in *common.EmptyMessage) (*accounts.A
 	var (
 		id     *accounts.AccountId
 		userID string
+		tknStr string
 		err    error
-		log    = logger.GetGrpcLogger(ctx)
+		code codes.Code
 	)
-	userID, err = token.ParseUserID(ctx)
+	tknStr, code, err = GetAuthorizationToken(ctx)
+	if err != nil {
+		return nil, status.Error(code, err.Error())
+	}
+	userID, code, err = token.ParseUserID(ctx, tknStr)
 	id = &accounts.AccountId{
 		Id: userID,
 	}
 	if err != nil {
-		log.Error(err)
-		return nil, err
+		return nil, status.Error(code, err.Error())
 	}
 	return id, nil
 }
 
 func ValidateToken(ctx context.Context) (*common.EmptyMessage, error) {
-	code, err := token.Validate(ctx)
+	tknStr := metautils.ExtractIncoming(ctx).Get("authorization")
+	if len(tknStr) == 0 {
+		return nil, status.Error(codes.PermissionDenied, errTokenNotProvided.Error())
+	}
+	code, err := token.Validate(ctx, tknStr)
 	if err != nil {
 		return nil, status.Error(code, err.Error())
 	}
@@ -88,18 +136,21 @@ func GenerateToken(ctx context.Context, userID string) (*common.EmptyMessage, er
 		UserID:             userID,
 	}
 	code, err = authrepo.SetRefreshToken(ctx, refreshToken)
-
-	header := metadata.Pairs("jwt-token", jwtToken, "rt-token", refreshToken.ID)
+	if err != nil {
+		return nil, status.Error(code, err.Error())
+	}
+	header := metadata.Pairs("jwt-token", jwtToken, "refresh-token", refreshToken.ID)
 	grpc.SendHeader(ctx, header)
 	return &common.EmptyMessage{}, nil
 }
 
 func getBrowserFingerprint(ctx context.Context) (string, codes.Code, error) {
-	userID := metautils.ExtractIncoming(ctx).Get("browser-fingerprint")
-	if len(userID) == 0 {
-		return "", codes.PermissionDenied, errBFNotProvided
+	bf := metautils.ExtractIncoming(ctx).Get("browser-fingerprint")
+	if len(bf) != 0 {
+		return bf, codes.OK, nil
 	}
-	return userID, codes.OK, nil
+
+	return "", codes.PermissionDenied, errBFNotProvided
 }
 
 func getRefreshToken(ctx context.Context) (string, error) {
@@ -116,4 +167,12 @@ func getUserID(ctx context.Context) (string, codes.Code, error) {
 		return "", codes.PermissionDenied, errUserIDNotProvided
 	}
 	return userID, codes.OK, nil
+}
+
+func GetAuthorizationToken(ctx context.Context) (string, codes.Code, error) {
+	tknStr := metautils.ExtractIncoming(ctx).Get("authorization")
+	if len(tknStr) == 0 {
+		return "", codes.PermissionDenied, errTokenNotProvided
+	}
+	return tknStr, codes.OK, nil
 }
