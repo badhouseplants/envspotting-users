@@ -27,7 +27,7 @@ func init() {
 	// auth tokens variables
 	viper.SetDefault("refresh_token_expiry", "24") // hours
 	viper.SetDefault("jwt_token_expiry", "15") // minutes
-	viper.SetDefault("encryption_key", "fuckmyachingtits") // minutes
+	viper.SetDefault("encryption_key", "1231231231231231") // minutes
 
 	// read environment variables that match
 	viper.AutomaticEnv()
