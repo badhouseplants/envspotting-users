@@ -172,11 +172,16 @@ func CheckCreds(ctx context.Context, in *accounts.AccountCreds) error {
 	return nil
 }
 
-func GetGitlabTokenByID(ctx context.Context, id *accounts.AccountId) (*accounts.GitlabToken, error) {
+func GetGitlabTokenByID(ctx context.Context, id *accounts.AccountId) (*accounts.AccountGitlabToken, error) {
 	repo := initRepo(ctx)
-	token, code, err := repo.GetGitlabTokenByID(ctx, id)
+	tokenEnc, code, err := repo.GetGitlabTokenByID(ctx, id)
 	if err != nil {
 		return nil, status.Error(code, err.Error())
 	}
-	return &accounts.GitlabToken{GitlabToken: token}, nil
+	token, code, err := encryption.Decrypt(ctx, tokenEnc)
+	if err != nil {
+		return nil, status.Error(code, err.Error())
+	}
+
+	return &accounts.AccountGitlabToken{GitlabToken: token}, nil
 }

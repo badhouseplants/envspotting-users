@@ -7,6 +7,7 @@ import (
 	"github.com/badhouseplants/envspotting-users/tools/logger"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_logrus "github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
+	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/spf13/viper"
 
@@ -46,6 +47,7 @@ func setupGrpcUnaryOpts() grpc.ServerOption {
 	return grpc_middleware.WithUnaryServerChain(
 		grpc_ctxtags.UnaryServerInterceptor(grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.CodeGenRequestFieldExtractor)),
 		grpc_logrus.UnaryServerInterceptor(logger.GrpcLogrusEntry, logger.GrpcLogrusOpts...),
+		grpc_recovery.UnaryServerInterceptor(),
 	)
 }
 
@@ -53,6 +55,8 @@ func setupGrpcStreamOpts() grpc.ServerOption {
 	return grpc_middleware.WithStreamServerChain(
 		grpc_ctxtags.StreamServerInterceptor(grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.CodeGenRequestFieldExtractor)),
 		grpc_logrus.StreamServerInterceptor(logger.GrpcLogrusEntry, logger.GrpcLogrusOpts...),
+
+		grpc_recovery.StreamServerInterceptor(),
 	)
 }
 

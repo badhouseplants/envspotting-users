@@ -106,13 +106,13 @@ func (s *accountsGrpcServer) GetAppsFromUser(ctx context.Context, in *accounts.A
 	return GetAppsFromUser(ctx, in)
 }
 
-func (s *tokenGrpcServer) GetGitlabTokenByAccountID(ctx context.Context, in *accounts.AccountId) (*accounts.GitlabToken, error) {
+func (s *tokenGrpcServer) GetGitlabTokenByAccountID(ctx context.Context, in *accounts.AccountId) (*accounts.AccountGitlabToken, error) {
 	logger.EnpointHit(ctx)
 	code, err := checkSelfOperation(ctx, in.Id)
 	if err != nil {
 		return nil, status.Error(code, err.Error())
 	}
-	return nil, nil
+	return GetGitlabTokenByID(ctx, in)
 }
 
 
