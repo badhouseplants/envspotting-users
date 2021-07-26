@@ -10,6 +10,7 @@ RUN go build -o main
 
 FROM  alpine:3.14
 WORKDIR /root/
+COPY migrations/scripts/ /root/migrations/scripts/ 
 # copy artifacts from builder
 COPY --from=builder /go/src/app/main .
 # run server
