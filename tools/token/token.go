@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/dgrijalva/jwt-go"
 	"google.golang.org/grpc/codes"
@@ -38,7 +39,8 @@ func Generate(ctx context.Context, userID string) (string, codes.Code, error) {
 	if err != nil {
 		return "", codes.Internal, err
 	}
-	return tknStr, codes.OK, nil
+	authStr := fmt.Sprintf("Bearer: %s", tknStr)
+	return authStr, codes.OK, nil
 }
 
 func Validate(ctx context.Context, tknStr string) (codes.Code, error) {
@@ -59,7 +61,8 @@ func Validate(ctx context.Context, tknStr string) (codes.Code, error) {
 	return codes.OK, nil
 }
 
-func ParseUserID(ctx context.Context, tknStr string) (string, codes.Code, error) {
+func ParseUserID(ctx context.Context, authStr string) (string, codes.Code, error) {
+	tknStr := strings.ReplaceAll(authStr, "Bearer: ", "")
 	hmacSecretString := jwtSecret // Value
 	hmacSecret := []byte(hmacSecretString)
 	token, _ := jwt.Parse(tknStr, func(token *jwt.Token) (interface{}, error) {
@@ -73,33 +76,3 @@ func ParseUserID(ctx context.Context, tknStr string) (string, codes.Code, error)
 		return "", codes.PermissionDenied, errors.New("wrong jwt token is provided")
 	}
 }
-
-// func RefreshTokens(ctx context.Context) (*Tokens, error) {
-	// r := redis.Client()
-	// rt := &RefreshToken{}
-	// rtID, err := getRefreshToken(ctx)
-	// if err != nil {
-		// return nil, codes.PermissionDenied, err
-	// }
-	// userID, err := getUserID(ctx)
-	// if err != nil {
-		// return nil, codes.PermissionDenied, err
-	// }
-	// oldRT := r.HGetAll(ctx, rtID)
-	// r.Del(ctx, rtID)
-	// oldRT.Scan(rt)
-	// browserFingerprint, err := getBrowserFingerprint(ctx)
-	// if err != nil {
-		// return nil, nil
-	// } else if userID != rt.UserID {
-		// fmt.Println(rt.UserID)
-		// fmt.Println(userID)
-		// return nil, codes.PermissionDenied, "refresh token isn't owned by this
-	// } else if browserFingerprint != rt.BrowserFingerprint {
-		// TODO: fix error message @allanger
-		// return nil, codes.PermissionDenied, "suspicious activity, browser fingerprint is
-	// } else {
-		// return Generate(ctx, userID)
-	// }
-// }
-// 

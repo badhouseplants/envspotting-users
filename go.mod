@@ -3,12 +3,13 @@ module github.com/badhouseplants/envspotting-users
 go 1.16
 
 require (
-	github.com/badhouseplants/envspotting-go-proto v1.0.0-dev
+	github.com/badhouseplants/envspotting-go-proto v1.0.0-dev2
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/go-redis/redis/v8 v8.11.0
 	github.com/golang-migrate/migrate/v4 v4.14.1
 	github.com/google/uuid v1.2.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
+	github.com/jackc/fake v0.0.0-20150926172116-812a484cc733 // indirect
 	github.com/jackc/pgconn v1.9.0
 	github.com/jackc/pgerrcode v0.0.0-20201024163028-a0d42d470451
 	github.com/jackc/pgx v3.6.2+incompatible

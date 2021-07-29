@@ -32,11 +32,12 @@ var initRepo = func(ctx context.Context) repo.AuthorizationStore {
 }
 
 var (
-	errUserIDNotProvided = errors.New("user id is not passed via metadata")
-	errBFNotProvided     = errors.New("browser fingerprint is not passed via metadata")
-	errTokenNotProvided  = errors.New("jwt or rt token is not provided via metadata")
-	errStrangeActivity   = errors.New("strange activity (wrong browser-fingerprint is provided)")
-	errTokenNotOwned     = errors.New("refresh token is not owned by this user")
+	errUserIDNotProvided       = errors.New("user id is not passed via metadata (user-id header)")
+	errBFNotProvided           = errors.New("browser fingerprint is not passed via metadata (browser-fingerprint header)")
+	errAuthTokenNotProvided    = errors.New("jwt token is not provided via metadata (authorization header)")
+	errRefreshTokenNotProvided = errors.New("refresh token is not provided via metadata (refresh-token header)")
+	errStrangeActivity         = errors.New("strange activity (wrong browser-fingerprint is provided)")
+	errRefreshTokenNotOwned    = errors.New("refresh token is not owned by this user")
 )
 
 // RefreshToken create a new pair of tokens and returns via metadata
@@ -46,10 +47,9 @@ func RefreshToken(ctx context.Context, in *common.EmptyMessage) (*common.EmptyMe
 		code codes.Code
 	)
 	initRepo(ctx)
-	tknStr := metautils.ExtractIncoming(ctx).Get("refresh-token")
-
-	if len(tknStr) == 0 {
-		return nil, status.Error(codes.PermissionDenied, errTokenNotProvided.Error())
+	tknStr, code, err := getRefreshToken(ctx)
+	if err != nil {
+		return nil, status.Error(code, err.Error())
 	}
 
 	userID, code, err := getUserID(ctx)
@@ -60,10 +60,12 @@ func RefreshToken(ctx context.Context, in *common.EmptyMessage) (*common.EmptyMe
 	if err != nil {
 		return nil, status.Error(code, err.Error())
 	}
+
 	rt := &repo.RefreshToken{
 		ID: tknStr,
 	}
 	_, code, err = authrepo.GetRefreshToken(ctx, rt)
+
 	switch {
 	case err != nil:
 		return nil, status.Error(code, err.Error())
@@ -71,7 +73,7 @@ func RefreshToken(ctx context.Context, in *common.EmptyMessage) (*common.EmptyMe
 		return nil, status.Error(codes.PermissionDenied, errStrangeActivity.Error())
 	case rt.UserID != userID:
 		fmt.Printf("%s - %s", rt.UserID, userID)
-		return nil, status.Error(codes.PermissionDenied, errTokenNotOwned.Error())
+		return nil, status.Error(codes.PermissionDenied, errRefreshTokenNotOwned.Error())
 	default:
 		code, err = authrepo.DelRefreshToken(ctx, rt)
 		if err != nil {
@@ -91,7 +93,7 @@ func ParseIdFromToken(ctx context.Context, in *common.EmptyMessage) (*accounts.A
 		userID string
 		tknStr string
 		err    error
-		code codes.Code
+		code   codes.Code
 	)
 	tknStr, code, err = GetAuthorizationToken(ctx)
 	if err != nil {
@@ -108,11 +110,11 @@ func ParseIdFromToken(ctx context.Context, in *common.EmptyMessage) (*accounts.A
 }
 
 func ValidateToken(ctx context.Context) (*common.EmptyMessage, error) {
-	tknStr := metautils.ExtractIncoming(ctx).Get("authorization")
-	if len(tknStr) == 0 {
-		return nil, status.Error(codes.PermissionDenied, errTokenNotProvided.Error())
+	tknStr, code, err := GetAuthorizationToken(ctx)
+	if err != nil {
+		return nil, status.Error(code, err.Error())
 	}
-	code, err := token.Validate(ctx, tknStr)
+	code, err = token.Validate(ctx, tknStr)
 	if err != nil {
 		return nil, status.Error(code, err.Error())
 	}
@@ -139,7 +141,7 @@ func GenerateToken(ctx context.Context, userID string) (*common.EmptyMessage, er
 	if err != nil {
 		return nil, status.Error(code, err.Error())
 	}
-	header := metadata.Pairs("jwt-token", jwtToken, "refresh-token", refreshToken.ID)
+	header := metadata.Pairs("authorization", jwtToken, "refresh-token", refreshToken.ID)
 	grpc.SendHeader(ctx, header)
 	return &common.EmptyMessage{}, nil
 }
@@ -153,12 +155,12 @@ func getBrowserFingerprint(ctx context.Context) (string, codes.Code, error) {
 	return "", codes.PermissionDenied, errBFNotProvided
 }
 
-func getRefreshToken(ctx context.Context) (string, error) {
-	oldRt := metautils.ExtractIncoming(ctx).Get("refresh-token-id")
+func getRefreshToken(ctx context.Context) (string, codes.Code, error) {
+	oldRt := metautils.ExtractIncoming(ctx).Get("refresh-token")
 	if len(oldRt) == 0 {
-		return "", nil
+		return "", codes.PermissionDenied, errRefreshTokenNotProvided
 	}
-	return oldRt, nil
+	return oldRt, codes.OK, nil
 }
 
 func getUserID(ctx context.Context) (string, codes.Code, error) {
@@ -172,7 +174,7 @@ func getUserID(ctx context.Context) (string, codes.Code, error) {
 func GetAuthorizationToken(ctx context.Context) (string, codes.Code, error) {
 	tknStr := metautils.ExtractIncoming(ctx).Get("authorization")
 	if len(tknStr) == 0 {
-		return "", codes.PermissionDenied, errTokenNotProvided
+		return "", codes.PermissionDenied, errAuthTokenNotProvided
 	}
 	return tknStr, codes.OK, nil
 }

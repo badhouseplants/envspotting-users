@@ -18,7 +18,7 @@ func init() {
 	viper.SetDefault("database_username", "docker_user")
 	viper.SetDefault("database_password", "qwertyu9")
 	viper.SetDefault("database_name", "users")
-	viper.SetDefault("`database_host", "localhost")
+	viper.SetDefault("database_host", "localhost")
 	viper.SetDefault("database_port", "5432")
 	// redis variables
 	viper.SetDefault("redis_host", "localhost:6379")

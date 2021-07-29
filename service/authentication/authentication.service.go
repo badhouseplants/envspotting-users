@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/badhouseplants/envspotting-go-proto/models/common"
 	"github.com/badhouseplants/envspotting-go-proto/models/users/accounts"
 	repo "github.com/badhouseplants/envspotting-users/repo/accounts"
 	accountsService "github.com/badhouseplants/envspotting-users/service/accounts"
@@ -29,7 +28,7 @@ var initRepo = func(ctx context.Context) repo.AccountStore {
 }
 
 // SingUp creates a user and generates tokens
-func SignUp(ctx context.Context, in *accounts.AccountCreds) (*common.EmptyMessage, error) {
+func SignUp(ctx context.Context, in *accounts.AccountCreds) (*accounts.AccountId, error) {
 	log := logger.GetGrpcLogger(ctx)
 	repo := initRepo(ctx)
 
@@ -39,21 +38,25 @@ func SignUp(ctx context.Context, in *accounts.AccountCreds) (*common.EmptyMessag
 		return nil, err
 	}
 
-	userId, code, err := repo.GetIDByUsername(ctx, user.Username)
+	userID, code, err := repo.GetIDByUsername(ctx, user.Username)
 	if err != nil {
 		return nil, status.Error(code, err.Error())
 	}
 
-	out, err := authService.GenerateToken(ctx, userId)
+	_, err = authService.GenerateToken(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	return out, nil
+	accountId := &accounts.AccountId{
+		Id: userID,
+	}
+
+	return accountId, nil
 }
 
 // SignIn with login and password
-func SignIn(ctx context.Context, in *accounts.AccountCreds) (*common.EmptyMessage, error) {
+func SignIn(ctx context.Context, in *accounts.AccountCreds) (*accounts.AccountId, error) {
 	repo := initRepo(ctx)
 	// Get user from the database
 	password, code, err := repo.GetPasswordByUsername(ctx, in.Username)
@@ -64,14 +67,19 @@ func SignIn(ctx context.Context, in *accounts.AccountCreds) (*common.EmptyMessag
 	if err = hasher.ComparePasswords(password, in.Password); err != nil {
 		return nil, status.Error(codes.PermissionDenied, err.Error())
 	}
-	userId, code, err := repo.GetIDByUsername(ctx, in.Username)
+	userID, code, err := repo.GetIDByUsername(ctx, in.Username)
 	if err != nil {
-		return nil, status.Error(codes.PermissionDenied, err.Error())
+		return nil, status.Error(code, err.Error())
 	}
 
-	out, err := authService.GenerateToken(ctx, userId)
+	_, err = authService.GenerateToken(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+
+	accountId := &accounts.AccountId{
+		Id: userID,
+	}
+
+	return accountId, nil
 }
