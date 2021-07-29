@@ -41,7 +41,7 @@ var (
 )
 
 // RefreshToken create a new pair of tokens and returns via metadata
-func RefreshToken(ctx context.Context, in *common.EmptyMessage) (*common.EmptyMessage, error) {
+func RefreshToken(ctx context.Context, userID *accounts.AccountId) (*common.EmptyMessage, error) {
 	var (
 		err  error
 		code codes.Code
@@ -52,10 +52,6 @@ func RefreshToken(ctx context.Context, in *common.EmptyMessage) (*common.EmptyMe
 		return nil, status.Error(code, err.Error())
 	}
 
-	userID, code, err := getUserID(ctx)
-	if err != nil {
-		return nil, status.Error(code, err.Error())
-	}
 	bf, code, err := getBrowserFingerprint(ctx)
 	if err != nil {
 		return nil, status.Error(code, err.Error())
@@ -71,7 +67,7 @@ func RefreshToken(ctx context.Context, in *common.EmptyMessage) (*common.EmptyMe
 		return nil, status.Error(code, err.Error())
 	case rt.BrowserFingerprint != bf:
 		return nil, status.Error(codes.PermissionDenied, errStrangeActivity.Error())
-	case rt.UserID != userID:
+	case rt.UserID != userID.Id:
 		fmt.Printf("%s - %s", rt.UserID, userID)
 		return nil, status.Error(codes.PermissionDenied, errRefreshTokenNotOwned.Error())
 	default:
@@ -79,7 +75,7 @@ func RefreshToken(ctx context.Context, in *common.EmptyMessage) (*common.EmptyMe
 		if err != nil {
 			return nil, status.Error(code, err.Error())
 		}
-		_, err = GenerateToken(ctx, userID)
+		_, err = GenerateToken(ctx, userID.Id)
 		if err != nil {
 			return nil, err
 		}

@@ -78,6 +78,7 @@ func (repo AccountRepo) SelfGetUser(ctx context.Context, id *accounts.AccountId)
 	var (
 		acc = &accounts.FullAccountInfo{}
 		log = logger.GetGrpcLogger(ctx)
+		// gitlabToken 
 	)
 
 	err := repo.Pool.QueryRow(ctx, sql, id.GetId()).Scan(&acc.Id, &acc.Username, &acc.GitlabToken)

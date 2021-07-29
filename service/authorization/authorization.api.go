@@ -18,7 +18,7 @@ func Register(grpcServer *grpc.Server) {
 	authorization.RegisterAuthorizationServer(grpcServer, &authorizationGrpcImpl{})
 }
 
-func (s *authorizationGrpcImpl) RefreshToken(ctx context.Context, in *common.EmptyMessage) (*common.EmptyMessage, error) {
+func (s *authorizationGrpcImpl) RefreshToken(ctx context.Context, in *accounts.AccountId) (*common.EmptyMessage, error) {
 	logger.EnpointHit(ctx)
 	return RefreshToken(ctx, in)
 }

@@ -44,6 +44,7 @@ func Generate(ctx context.Context, userID string) (string, codes.Code, error) {
 }
 
 func Validate(ctx context.Context, tknStr string) (codes.Code, error) {
+	tknStr = strings.ReplaceAll(tknStr, "Bearer: ", "")
 	// Initialize a new instance of `Claims`
 	claims := &JWTClaims{}
 	tkn, err := jwt.ParseWithClaims(tknStr, claims, func(token *jwt.Token) (interface{}, error) {

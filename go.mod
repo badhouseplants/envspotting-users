@@ -3,7 +3,7 @@ module github.com/badhouseplants/envspotting-users
 go 1.16
 
 require (
-	github.com/badhouseplants/envspotting-go-proto v1.0.0-dev2
+	github.com/badhouseplants/envspotting-go-proto v1.0.0-dev3
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/go-redis/redis/v8 v8.11.0
 	github.com/golang-migrate/migrate/v4 v4.14.1
