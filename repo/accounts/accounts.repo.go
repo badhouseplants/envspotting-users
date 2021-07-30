@@ -1,6 +1,7 @@
 package accrepo
 
 import (
+	libsql "database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -78,10 +79,11 @@ func (repo AccountRepo) SelfGetUser(ctx context.Context, id *accounts.AccountId)
 	var (
 		acc = &accounts.FullAccountInfo{}
 		log = logger.GetGrpcLogger(ctx)
-		// gitlabToken 
+		gitlabToken libsql.NullString
 	)
 
-	err := repo.Pool.QueryRow(ctx, sql, id.GetId()).Scan(&acc.Id, &acc.Username, &acc.GitlabToken)
+	err := repo.Pool.QueryRow(ctx, sql, id.GetId()).Scan(&acc.Id, &acc.Username, &gitlabToken)
+	acc.GitlabToken = gitlabToken.String
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, codes.NotFound, errUserNotFoundByID(id.GetId())
@@ -168,7 +170,8 @@ func (repo AccountRepo) GetGitlabTokenByID(ctx context.Context, id *accounts.Acc
 
 	var (
 		log   = logger.GetGrpcLogger(ctx)
-		token string
+		token libsql.NullString
+		
 	)
 
 	err := repo.Pool.QueryRow(ctx, sql, id.GetId()).Scan(&token)
@@ -180,7 +183,7 @@ func (repo AccountRepo) GetGitlabTokenByID(ctx context.Context, id *accounts.Acc
 			return "", codes.Internal, err
 		}
 	}
-	return token, codes.OK, nil
+	return token.String, codes.OK, nil
 }
 
 func (repo AccountRepo) GetAppsFromUser(ctx context.Context, acc *accounts.AccountId) (*accounts.AccountsApps, codes.Code, error) {

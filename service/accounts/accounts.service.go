@@ -61,9 +61,11 @@ func SelfGet(ctx context.Context, in *accounts.AccountId) (*accounts.FullAccount
 	if err != nil {
 		return nil, status.Error(code, err.Error())
 	}
-	user.GitlabToken, code, err = encryption.Decrypt(ctx, user.GitlabToken)
-	if err != nil {
-		return nil, status.Error(code, err.Error())
+	if len(user.GitlabToken) > 0 {
+		user.GitlabToken, code, err = encryption.Decrypt(ctx, user.GitlabToken)
+		if err != nil {
+			return nil, status.Error(code, err.Error())
+		}
 	}
 	return user, nil
 
@@ -82,13 +84,20 @@ func UpdateUser(ctx context.Context, in *accounts.FullAccountInfo) (*accounts.Fu
 	var (
 		code codes.Code
 		err  error
+		encAcc = &accounts.FullAccountInfo{
+			Id: in.GetId(),
+			Username: in.GetUsername(),
+			GitlabToken: in.GetGitlabToken(),
+		}
 	)
 	repo := initRepo(ctx)
-	in.GitlabToken, code, err = encryption.Encrypt(ctx, in.GitlabToken)
-	if err != nil {
-		return nil, status.Error(code, err.Error())
+	if len(encAcc.GitlabToken) > 0 {
+		encAcc.GitlabToken, code, err = encryption.Encrypt(ctx, encAcc.GitlabToken)
+		if err != nil {
+			return nil, status.Error(code, err.Error())
+		}
 	}
-	_, err = repo.UpdateUser(ctx, in)
+	_, err = repo.UpdateUser(ctx, encAcc)
 	if err != nil {
 		return nil, err
 	}
@@ -173,14 +182,21 @@ func CheckCreds(ctx context.Context, in *accounts.AccountCreds) error {
 }
 
 func GetGitlabTokenByID(ctx context.Context, id *accounts.AccountId) (*accounts.AccountGitlabToken, error) {
+	var (
+		token string
+		code  codes.Code
+		err   error
+	)
 	repo := initRepo(ctx)
 	tokenEnc, code, err := repo.GetGitlabTokenByID(ctx, id)
 	if err != nil {
 		return nil, status.Error(code, err.Error())
 	}
-	token, code, err := encryption.Decrypt(ctx, tokenEnc)
-	if err != nil {
-		return nil, status.Error(code, err.Error())
+	if len(tokenEnc) > 0 {
+		token, code, err = encryption.Decrypt(ctx, tokenEnc)
+		if err != nil {
+			return nil, status.Error(code, err.Error())
+		}
 	}
 
 	return &accounts.AccountGitlabToken{GitlabToken: token}, nil
